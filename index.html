@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Math Blaster — ยิงเลขถล่มจักรวาล</title>
+<style>
+  @font-face {
+    font-family: 'PressStart';
+    src: local('Courier New');
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #02050a;
+    overflow: hidden;
+    font-family: 'Courier New', 'TH Sarabun New', monospace;
+    height: 100%;
+    width: 100%;
+  }
+  #wrap {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    background: radial-gradient(ellipse at 50% 30%, #061018 0%, #02050a 70%);
+    overflow: hidden;
+  }
+  /* starfield */
+  .star {
+    position: absolute;
+    background: #bfe9ff;
+    border-radius: 50%;
+    opacity: 0.7;
+  }
+  .scanline-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,255,180,0.025) 0px,
+      rgba(0,255,180,0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 50;
+  }
+  .vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 140px 40px rgba(0,0,0,0.85);
+    z-index: 51;
+  }
+
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 14px 18px;
+    z-index: 40;
+    pointer-events: none;
+  }
+  .hud-box {
+    color: #38ffb0;
+    text-shadow: 0 0 6px rgba(56,255,176,0.8);
+    font-size: 13px;
+    letter-spacing: 1px;
+    line-height: 1.6;
+  }
+  .hud-box .val {
+    color: #aef9ff;
+    font-size: 16px;
+    text-shadow: 0 0 8px rgba(174,249,255,0.9);
+  }
+  .hud-right { text-align: right; }
+
+  #hearts { display: flex; gap: 4px; margin-top: 2px; }
+  .heart {
+    width: 14px; height: 14px;
+    color: #ff3b6e;
+    text-shadow: 0 0 6px rgba(255,59,110,0.9);
+    font-size: 16px;
+  }
+
+  #target-banner {
+    position: absolute;
+    top: 14px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 41;
+    text-align: center;
+    pointer-events: none;
+  }
+  #target-label {
+    color: #8fb9c9;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-shadow: 0 0 4px rgba(143,185,201,0.6);
+  }
+  #target-eq {
+    color: #fffb8f;
+    font-size: 30px;
+    font-weight: bold;
+    text-shadow: 0 0 14px rgba(255,251,143,0.85), 0 0 2px #fff;
+    letter-spacing: 2px;
+    margin-top: 2px;
+  }
+
+  .enemy {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    user-select: none;
+    transition: filter 0.15s, opacity 0.25s;
+    z-index: 10;
+  }
+  .enemy.correct-target .pod {
+    box-shadow: 0 0 0 2px #fffb8f, 0 0 18px rgba(255,251,143,0.55);
+  }
+  .enemy .pod {
+    width: 78px;
+    height: 56px;
+    background: rgba(8,28,30,0.85);
+    border: 1.5px solid #2bd6c9;
+    border-radius: 10px 10px 22px 22px;
+    box-shadow: 0 0 12px rgba(43,214,201,0.35), inset 0 0 10px rgba(43,214,201,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .enemy .pod::before {
+    content: '';
+    position: absolute;
+    top: -7px; left: 50%;
+    transform: translateX(-50%);
+    width: 14px; height: 14px;
+    background: #ff5c5c;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(255,92,92,0.9);
+  }
+  .enemy .eq {
+    color: #aef9ff;
+    font-size: 16px;
+    font-weight: bold;
+    text-shadow: 0 0 6px rgba(174,249,255,0.7);
+    letter-spacing: 1px;
+  }
+  .enemy .hp-bar {
+    width: 60px;
+    height: 4px;
+    margin: 5px auto 0;
+    background: rgba(255,255,255,0.12);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .enemy .hp-fill {
+    height: 100%;
+    background: #38ffb0;
+    transition: width 0.2s;
+  }
+
+  .explosion {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fffde0 0%, #ffb648 35%, #ff5c3a 60%, transparent 80%);
+    z-index: 15;
+    animation: boom 0.4s ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes boom {
+    0% { opacity: 1; transform: translate(-50%,-50%) scale(0.2); }
+    100% { opacity: 0; transform: translate(-50%,-50%) scale(1.6); }
+  }
+
+  .bullet {
+    position: absolute;
+    width: 5px; height: 16px;
+    background: linear-gradient(to top, #38ffb0, #fffde0);
+    border-radius: 3px;
+    box-shadow: 0 0 8px rgba(56,255,176,0.9);
+    z-index: 12;
+    transform: translate(-50%, -50%);
+  }
+
+  #ship {
+    position: absolute;
+    bottom: 86px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50px;
+    height: 46px;
+    z-index: 20;
+  }
+  #ship svg { width: 100%; height: 100%; filter: drop-shadow(0 0 10px rgba(56,255,176,0.7)); }
+
+  #console {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    z-index: 30;
+    padding: 14px 16px 18px;
+    background: linear-gradient(to top, rgba(2,8,12,0.96) 60%, rgba(2,8,12,0));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  #feedback {
+    height: 18px;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-shadow: 0 0 6px currentColor;
+  }
+  #input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  #answer-input {
+    width: 160px;
+    height: 44px;
+    background: rgba(4,18,20,0.9);
+    border: 1.5px solid #2bd6c9;
+    border-radius: 8px;
+    color: #aef9ff;
+    font-size: 22px;
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+    box-shadow: 0 0 10px rgba(43,214,201,0.25);
+    outline: none;
+  }
+  #answer-input:focus {
+    border-color: #38ffb0;
+    box-shadow: 0 0 16px rgba(56,255,176,0.5);
+  }
+  #fire-btn {
+    height: 44px;
+    padding: 0 22px;
+    background: rgba(56,255,176,0.12);
+    border: 1.5px solid #38ffb0;
+    border-radius: 8px;
+    color: #38ffb0;
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    cursor: pointer;
+    text-shadow: 0 0 6px rgba(56,255,176,0.7);
+    box-shadow: 0 0 10px rgba(56,255,176,0.2);
+  }
+  #fire-btn:active { transform: scale(0.96); }
+  #hint {
+    color: #4f6b76;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  #overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    background: rgba(2,5,10,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+    gap: 14px;
+  }
+  #overlay h1 {
+    color: #38ffb0;
+    font-size: 30px;
+    letter-spacing: 4px;
+    text-shadow: 0 0 16px rgba(56,255,176,0.85);
+    margin: 0;
+  }
+  #overlay p {
+    color: #8fb9c9;
+    font-size: 13px;
+    letter-spacing: 1px;
+    max-width: 320px;
+    line-height: 1.7;
+    margin: 0;
+  }
+  #overlay .big-stat {
+    color: #fffb8f;
+    font-size: 22px;
+    text-shadow: 0 0 12px rgba(255,251,143,0.8);
+  }
+  #overlay button {
+    margin-top: 8px;
+    height: 48px;
+    padding: 0 34px;
+    background: rgba(56,255,176,0.12);
+    border: 1.5px solid #38ffb0;
+    border-radius: 8px;
+    color: #38ffb0;
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    cursor: pointer;
+    text-shadow: 0 0 6px rgba(56,255,176,0.7);
+  }
+  #overlay button:active { transform: scale(0.96); }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 480px) {
+    .enemy .pod { width: 64px; height: 46px; }
+    .enemy .eq { font-size: 13px; }
+    #target-eq { font-size: 24px; }
+    #answer-input { width: 130px; font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="wrap" role="application" aria-label="เกมยิงต้องแก้สมการคณิตศาสตร์ก่อนยิง">
+  <div id="starfield"></div>
+
+  <div id="hud">
+    <div class="hud-box">
+      คะแนน<br><span class="val" id="score-val">0</span>
+    </div>
+    <div class="hud-box hud-right">
+      ชีวิต
+      <div id="hearts"></div>
+      <div style="margin-top:6px;">ด่าน <span class="val" id="wave-val">1</span></div>
+    </div>
+  </div>
+
+  <div id="target-banner">
+    <div id="target-label">เป้าหมายล็อกอยู่ — แก้สมการเพื่อยิง</div>
+    <div id="target-eq">-</div>
+  </div>
+
+  <div id="play-area"></div>
+
+  <div id="ship">
+    <svg viewBox="0 0 50 46" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="25,0 40,40 25,32 10,40" fill="#0a2a28" stroke="#38ffb0" stroke-width="2"/>
+      <circle cx="25" cy="18" r="4" fill="#aef9ff"/>
+    </svg>
+  </div>
+
+  <div id="console">
+    <div id="feedback"></div>
+    <div id="input-row">
+      <input type="text" id="answer-input" inputmode="numeric" autocomplete="off" placeholder="?" aria-label="พิมพ์คำตอบของสมการที่นี่">
+      <button id="fire-btn" type="button">ยิง</button>
+    </div>
+    <div id="hint">พิมพ์คำตอบให้ตรงกับยานที่มีกรอบสีเหลือง แล้วกด Enter หรือปุ่มยิง</div>
+  </div>
+
+  <div id="overlay">
+    <h1>MATH BLASTER</h1>
+    <p>กองยานศัตรูบุกมาพร้อมสมการ<br>แก้เลขให้ถูกเพื่อล็อกเป้าและยิงทำลาย<br>ตอบผิดหรือช้าเกินไป ยานจะเข้ามาทำร้ายฐานของคุณ</p>
+    <button id="start-btn" type="button">เริ่มเกม</button>
+  </div>
+
+  <div class="scanline-overlay"></div>
+  <div class="vignette"></div>
+</div>
+
+<script>
+(function(){
+  const playArea = document.getElementById('play-area');
+  const wrap = document.getElementById('wrap');
+  const answerInput = document.getElementById('answer-input');
+  const fireBtn = document.getElementById('fire-btn');
+  const feedback = document.getElementById('feedback');
+  const scoreVal = document.getElementById('score-val');
+  const waveVal = document.getElementById('wave-val');
+  const heartsEl = document.getElementById('hearts');
+  const targetEq = document.getElementById('target-eq');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('start-btn');
+  const ship = document.getElementById('ship');
+
+  let score = 0;
+  let lives = 3;
+  let wave = 1;
+  let enemies = [];
+  let running = false;
+  let spawnTimer = null;
+  let moveTimer = null;
+  let nextId = 1;
+  let lockedEnemyId = null;
+
+  function buildStarfield(){
+    const sf = document.getElementById('starfield');
+    sf.innerHTML = '';
+    const count = 70;
+    for (let i=0;i<count;i++){
+      const s = document.createElement('div');
+      s.className = 'star';
+      const size = Math.random()*2 + 1;
+      s.style.width = size+'px';
+      s.style.height = size+'px';
+      s.style.left = (Math.random()*100)+'%';
+      s.style.top = (Math.random()*100)+'%';
+      s.style.opacity = (Math.random()*0.6+0.3).toFixed(2);
+      sf.appendChild(s);
+    }
+  }
+  buildStarfield();
+
+  function updateHearts(){
+    heartsEl.innerHTML = '';
+    for (let i=0;i<3;i++){
+      const h = document.createElement('span');
+      h.className = 'heart';
+      h.textContent = i < lives ? '♥' : '♡';
+      h.style.opacity = i < lives ? '1' : '0.3';
+      heartsEl.appendChild(h);
+    }
+  }
+
+  function genEquation(level){
+    // level 1: + - within small range, level up adds * and /, bigger numbers
+    const opsPool = level < 2 ? ['+','-'] : (level < 4 ? ['+','-','*'] : ['+','-','*','/']);
+    const op = opsPool[Math.floor(Math.random()*opsPool.length)];
+    let a, b, answer, text;
+    const maxRange = Math.min(9 + level*2, 30);
+    if (op === '+'){
+      a = Math.floor(Math.random()*maxRange)+1;
+      b = Math.floor(Math.random()*maxRange)+1;
+      answer = a+b;
+      text = a+' + '+b;
+    } else if (op === '-'){
+      a = Math.floor(Math.random()*maxRange)+1;
+      b = Math.floor(Math.random()*a)+1; // avoid negative for simplicity
+      answer = a-b;
+      text = a+' - '+b;
+    } else if (op === '*'){
+      a = Math.floor(Math.random()*9)+2;
+      b = Math.floor(Math.random()*9)+2;
+      answer = a*b;
+      text = a+' × '+b;
+    } else { // division, ensure integer result
+      b = Math.floor(Math.random()*8)+2;
+      answer = Math.floor(Math.random()*9)+1;
+      a = answer*b;
+      text = a+' ÷ '+b;
+    }
+    return { text: text, answer: answer };
+  }
+
+  function spawnEnemy(){
+    if (!running) return;
+    const id = nextId++;
+    const eq = genEquation(wave);
+    const el = document.createElement('div');
+    el.className = 'enemy';
+    el.dataset.id = id;
+    el.style.left = (12 + Math.random()*76) + '%';
+    el.style.top = '-60px';
+    el.innerHTML = '<div class="pod"><div class="eq">'+eq.text+'</div></div><div class="hp-bar"><div class="hp-fill" style="width:100%"></div></div>';
+    playArea.appendChild(el);
+
+    const speed = 0.10 + wave*0.018 + Math.random()*0.05; // % per tick
+    enemies.push({ id: id, el: el, answer: eq.answer, topPercent: -8, speed: speed, alive: true });
+  }
+
+  function clearTimers(){
+    if (spawnTimer) clearInterval(spawnTimer);
+    if (moveTimer) clearInterval(moveTimer);
+    spawnTimer = null; moveTimer = null;
+  }
+
+  function gameLoop(){
+    moveTimer = setInterval(()=>{
+      if (!running) return;
+      enemies.forEach(en=>{
+        if (!en.alive) return;
+        en.topPercent += en.speed;
+        en.el.style.top = en.topPercent + '%';
+        if (en.topPercent > 78){
+          // reached base
+          hitBase(en);
+        }
+      });
+      refreshLockTarget();
+    }, 50);
+
+    spawnTimer = setInterval(()=>{
+      if (!running) return;
+      spawnEnemy();
+    }, Math.max(2600 - wave*150, 1100));
+  }
+
+  function hitBase(en){
+    if (!en.alive) return;
+    en.alive = false;
+    removeEnemyEl(en);
+    enemies = enemies.filter(e=>e.id!==en.id);
+    lives -= 1;
+    updateHearts();
+    flashShip();
+    if (lives <= 0){
+      endGame(false);
+    } else {
+      refreshLockTarget();
+    }
+  }
+
+  function flashShip(){
+    ship.style.filter = 'drop-shadow(0 0 14px rgba(255,59,110,0.9))';
+    setTimeout(()=>{ ship.style.filter=''; }, 250);
+  }
+
+  function removeEnemyEl(en){
+    if (en.el && en.el.parentNode) en.el.parentNode.removeChild(en.el);
+  }
+
+  function refreshLockTarget(){
+    // pick the enemy closest to base (largest topPercent) among alive enemies
+    const alive = enemies.filter(e=>e.alive);
+    if (alive.length === 0){
+      lockedEnemyId = null;
+      targetEq.textContent = '-';
+      document.querySelectorAll('.enemy').forEach(e=>e.classList.remove('correct-target'));
+      return;
+    }
+    alive.sort((a,b)=> b.topPercent - a.topPercent);
+    const target = alive[0];
+    if (lockedEnemyId !== target.id){
+      lockedEnemyId = target.id;
+    }
+    targetEq.textContent = '? = ' + getEnemyById(lockedEnemyId).el.querySelector('.eq').textContent;
+    document.querySelectorAll('.enemy').forEach(e=>{
+      e.classList.toggle('correct-target', Number(e.dataset.id) === lockedEnemyId);
+    });
+  }
+
+  function getEnemyById(id){
+    return enemies.find(e=>e.id===id);
+  }
+
+  function shootAt(en){
+    const rect = en.el.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const shipRect = ship.getBoundingClientRect();
+
+    const bullet = document.createElement('div');
+    bullet.className = 'bullet';
+    const startX = shipRect.left - wrapRect.left + shipRect.width/2;
+    const startY = shipRect.top - wrapRect.top;
+    bullet.style.left = startX + 'px';
+    bullet.style.top = startY + 'px';
+    playArea.appendChild(bullet);
+
+    const endX = rect.left - wrapRect.left + rect.width/2;
+    const endY = rect.top - wrapRect.top + rect.height/2;
+
+    const dist = Math.hypot(endX-startX, endY-startY);
+    const duration = Math.max(120, Math.min(260, dist*0.5));
+
+    bullet.style.transition = 'left '+duration+'ms linear, top '+duration+'ms linear';
+    requestAnimationFrame(()=>{
+      bullet.style.left = endX + 'px';
+      bullet.style.top = endY + 'px';
+    });
+
+    setTimeout(()=>{
+      if (bullet.parentNode) bullet.parentNode.removeChild(bullet);
+      explodeEnemy(en, endX, endY);
+    }, duration);
+  }
+
+  function explodeEnemy(en, x, y){
+    if (!en.alive) return; // already removed by base hit etc
+    en.alive = false;
+    removeEnemyEl(en);
+    enemies = enemies.filter(e=>e.id!==en.id);
+
+    const boom = document.createElement('div');
+    boom.className = 'explosion';
+    boom.style.left = x+'px';
+    boom.style.top = y+'px';
+    playArea.appendChild(boom);
+    setTimeout(()=>{ if(boom.parentNode) boom.parentNode.removeChild(boom); }, 420);
+
+    score += 10 + wave*2;
+    scoreVal.textContent = score;
+
+    if (score > 0 && score % 120 === 0){
+      wave += 1;
+      waveVal.textContent = wave;
+    }
+
+    refreshLockTarget();
+  }
+
+  function showFeedback(msg, color){
+    feedback.textContent = msg;
+    feedback.style.color = color;
+    setTimeout(()=>{ if (feedback.textContent===msg) feedback.textContent=''; }, 700);
+  }
+
+  function tryFire(){
+    if (!running) return;
+    const raw = answerInput.value.trim();
+    if (raw === ''){
+      showFeedback('พิมพ์คำตอบก่อนยิง', '#fffb8f');
+      return;
+    }
+    const guess = Number(raw);
+    if (Number.isNaN(guess)){
+      showFeedback('ใส่ตัวเลขเท่านั้น', '#ff5c5c');
+      answerInput.value='';
+      return;
+    }
+    if (lockedEnemyId === null){
+      showFeedback('ยังไม่มีเป้าหมาย', '#8fb9c9');
+      answerInput.value='';
+      return;
+    }
+    const target = getEnemyById(lockedEnemyId);
+    if (!target){
+      answerInput.value='';
+      return;
+    }
+    if (guess === target.answer){
+      shootAt(target);
+      showFeedback('ยิงโดน!', '#38ffb0');
+    } else {
+      showFeedback('คำตอบผิด ลองใหม่', '#ff5c5c');
+    }
+    answerInput.value = '';
+    answerInput.focus();
+  }
+
+  fireBtn.addEventListener('click', tryFire);
+  answerInput.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter'){
+      e.preventDefault();
+      tryFire();
+    }
+  });
+
+  function resetGame(){
+    score = 0; lives = 3; wave = 1; nextId = 1; lockedEnemyId = null;
+    enemies.forEach(en=>removeEnemyEl(en));
+    enemies = [];
+    playArea.innerHTML = '';
+    scoreVal.textContent = '0';
+    waveVal.textContent = '1';
+    updateHearts();
+    targetEq.textContent = '-';
+    answerInput.value = '';
+  }
+
+  function startGame(){
+    resetGame();
+    overlay.classList.add('hidden');
+    running = true;
+    clearTimers();
+    gameLoop();
+    spawnEnemy();
+    setTimeout(()=>{ answerInput.focus(); }, 50);
+  }
+
+  function endGame(won){
+    running = false;
+    clearTimers();
+    overlay.innerHTML = '<h1>'+ (won ? 'ชนะ!' : 'ฐานถูกทำลาย') +'</h1>' +
+      '<p class="big-stat">คะแนนสุดท้าย: '+score+'</p>' +
+      '<p>คุณไปถึงด่าน '+wave+'<br>ลองอีกครั้งเพื่อทำคะแนนให้สูงขึ้น</p>' +
+      '<button id="start-btn" type="button">เล่นอีกครั้ง</button>';
+    overlay.classList.remove('hidden');
+    document.getElementById('start-btn').addEventListener('click', startGame);
+  }
+
+  startBtn.addEventListener('click', startGame);
+})();
+</script>
+</body>
+</html>
